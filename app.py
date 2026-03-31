@@ -103,7 +103,7 @@ def prepare_single_output(subject_id: str, bw_kg: float, summary):
     time_dense = pd.to_numeric(dense_df["Time_min"], errors="coerce")
 
     metrics["Ra_peak_per_kg"] = float(ra_dense.max()) if ra_dense.notna().any() else np.nan
-    metrics["Ra_AUC_per_kg"] = float(np.trapz(ra_dense.values, time_dense.values)) if ra_dense.notna().sum() >= 2 else np.nan
+    metrics["Ra_AUC_per_kg"] = float(np.trapezoid(ra_dense.values, time_dense.values)) if ra_dense.notna().sum() >= 2 else np.nan
 
     # バッチ結果でも使いやすいよう、観測点の Ra_pred_per_kg も保持
     for _, rr in fit_df.iterrows():
