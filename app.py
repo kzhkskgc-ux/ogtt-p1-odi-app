@@ -163,7 +163,7 @@ def plot_single(fit_df, dense_df):
     ax2.plot(dense_df["Time_min"], dense_df["Ra_pred_per_kg"], label="Ra_pred / BW")
     ax2.set_xlabel("Time (min)")
     ax2.set_ylabel("Ra_pred_per_kg (mg/dL/min/kg)")
-    ax2.set_title("糖吸収曲線（体重補正後） / Weight-normalized glucose absorption curve")
+    ax2.set_title("Weight-normalized glucose absorption curve")
     ax2.legend()
     st.pyplot(fig2)
 
