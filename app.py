@@ -32,10 +32,10 @@ def setup_japanese_font():
 
 setup_japanese_font()
 
-st.set_page_config(page_title="OGTT P1 / oDI App", layout="wide")
+st.set_page_config(page_title="OGTT P1 / SI / GIG t1/2 App ver.2", layout="wide")
 
-st.title("OGTT minimal modelに基づくp1・SI・oDI・糖流入指標算出アプリ")
-st.caption("神戸大学臨床糖尿病グループ・研究用プロトタイプ")
+st.title("OGTT 5時点 minimal model ver.2：GE・SI・GIG t1/2・糖流入指標算出アプリ")
+st.caption("神戸大学臨床糖尿病グループ・研究用プロトタイプ ver.2（15分値補完なし）")
 
 WEIGHT_COL = "BW"
 REQUIRED_COLS_WITH_BW = ["ID", WEIGHT_COL] + [c for c in REQUIRED_COLS if c != "ID"]
@@ -43,14 +43,16 @@ REQUIRED_COLS_WITH_BW = ["ID", WEIGHT_COL] + [c for c in REQUIRED_COLS if c != "
 with st.expander("このアプリで算出する項目"):
     st.markdown(
         """
-- **P1 (p1_GE)**: 簡略化oral minimal modelに基づく model-derived glucose effectiveness index
+- **P1 (p1_GE)**: 簡略化oral minimal modelに基づく model-derived glucose effectiveness index（GE）
 - **SI**: model-derived insulin sensitivity index（改良版では p2 を固定し、SI を直接推定）
 - **Insulinogenic index**: (IRI30 - IRI0) / (BG30 - BG0)
 - **Matsuda index**: 10000 / sqrt[(FPG×FIRI)×(mean PG×mean IRI)]
 - **oDI**: Insulinogenic index × Matsuda index
+- **GI glucose half-life (GIG t1/2)**: 消化管由来糖流入の半減期指標
 - **糖流入指標（比較用）**: **Ra_pred_per_kg = Ra_pred / BW**
 
 入力単位は **血糖 mg/dL、インスリン μU/mL、体重 kg** を想定しています。  
+**ver.2では15分値を補完せず、観測された0, 30, 60, 90, 120分の5時点のみでモデルをfitします。**  
 この版では、**体重変化の影響をならすために、群内比較にも体重補正後の糖流入指標 `Ra_pred_per_kg` を使う**設計です。  
 表示単位は **mg/dL/min/kg** としています。  
 参考のため、元の **Ra_pred (mg/dL/min)** も出力データ内には残しています。これはtracer法で測定した真の糖吸収量ではなく、モデル由来の糖流入指標です。

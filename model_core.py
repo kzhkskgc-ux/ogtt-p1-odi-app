@@ -6,7 +6,7 @@ from typing import Dict, List, Tuple
 import numpy as np
 import pandas as pd
 from scipy.integrate import solve_ivp
-from scipy.interpolate import PchipInterpolator, interp1d
+from scipy.interpolate import interp1d
 from scipy.optimize import least_squares
 
 
@@ -14,7 +14,7 @@ from scipy.optimize import least_squares
 # Time grids
 # ------------------------------------------------------------
 T_OBS = np.array([0, 30, 60, 90, 120], dtype=float)
-T_FIT = np.array([0, 15, 30, 60, 90, 120], dtype=float)
+T_FIT = T_OBS.copy()
 DENSE_T = np.linspace(0.0, 120.0, 241)
 
 BG_COLS = ["O-BG(0)", "O-BG(30)", "O-BG(60)", "O-BG(90)", "O-BG(120)"]
@@ -30,7 +30,6 @@ REQUIRED_COLS = ["ID"] + BG_COLS + IRI_COLS
 P2_FIXED = 0.03       # min^-1
 P1_PRIOR = 0.016      # min^-1, weak prior center
 GLUCOSE_SD = 10.0     # mg/dL, residual scaling
-W15 = 0.5             # 15-min PCHIP point is an auxiliary point, not a measured point
 
 
 @dataclass
@@ -38,14 +37,6 @@ class FitSummary:
     metrics: Dict[str, float]
     fit_table: pd.DataFrame
     dense_table: pd.DataFrame
-
-
-def pchip_y15(values_5pt: np.ndarray) -> float:
-    """Estimate the 15-min value using shape-preserving PCHIP interpolation."""
-    values_5pt = np.asarray(values_5pt, dtype=float)
-    f = PchipInterpolator(T_OBS, values_5pt, extrapolate=False)
-    y15 = float(f(15.0))
-    return max(y15, 0.0)
 
 
 def simulate_p1_si_model(
@@ -139,7 +130,7 @@ def fit_subject_p1_si_model(t_points: np.ndarray, g_obs: np.ndarray, i_points: n
     Estimated parameters:
         p1, SI, KGI, Ka, GI0
 
-    The interpolated 15-min value is down-weighted because it is not directly observed.
+    The model is fitted only to observed OGTT time points (0, 30, 60, 90, and 120 min).
     A weak prior on p1 is added to reduce implausible compensation between p1 and Ra.
     """
     t_points = np.asarray(t_points, dtype=float)
@@ -160,9 +151,6 @@ def fit_subject_p1_si_model(t_points: np.ndarray, g_obs: np.ndarray, i_points: n
     lb = np.array([0.005, 1e-6, 1e-4, 1e-4, 1e-4], dtype=float)
     ub = np.array([0.040, 5e-2, 0.20, 0.20, 1e4], dtype=float)
 
-    weights = np.ones_like(t_points, dtype=float)
-    weights[np.isclose(t_points, 15.0)] = W15
-
     def resid(x):
         p1, si, kgi, ka, gi0 = x
         g_pred, *_ = simulate_p1_si_model(
@@ -180,7 +168,7 @@ def fit_subject_p1_si_model(t_points: np.ndarray, g_obs: np.ndarray, i_points: n
         )
 
         # Scale glucose residuals to roughly unit scale.
-        r_glu = weights * (g_pred - g_obs) / GLUCOSE_SD
+        r_glu = (g_pred - g_obs) / GLUCOSE_SD
 
         # Weak log-scale prior for p1 centered around 0.016 min^-1.
         # This is not a fixed value; it only discourages extreme compensation.
@@ -231,7 +219,7 @@ def fit_subject_p1_si_model(t_points: np.ndarray, g_obs: np.ndarray, i_points: n
     )
 
     return {
-        "model_version": "p1_estimated_SI_estimated_p2_fixed_v2",
+        "model_version": "p1_estimated_SI_estimated_p2_fixed_v2_5timepoint_no15",
         "p1_GE": p1,
         "p2": p2,
         "p2_fixed": p2,
@@ -264,11 +252,8 @@ def run_single_subject(subject_id: str, glucose_5pt: List[float], insulin_5pt: L
     glucose_5pt = np.asarray(glucose_5pt, dtype=float)
     insulin_5pt = np.asarray(insulin_5pt, dtype=float)
 
-    g15 = pchip_y15(glucose_5pt)
-    i15 = pchip_y15(insulin_5pt)
-
-    g_fit = np.array([glucose_5pt[0], g15, glucose_5pt[1], glucose_5pt[2], glucose_5pt[3], glucose_5pt[4]], dtype=float)
-    i_fit = np.array([insulin_5pt[0], i15, insulin_5pt[1], insulin_5pt[2], insulin_5pt[3], insulin_5pt[4]], dtype=float)
+    g_fit = glucose_5pt.copy()
+    i_fit = insulin_5pt.copy()
 
     fit = fit_subject_p1_si_model(T_FIT, g_fit, i_fit)
 
@@ -279,8 +264,6 @@ def run_single_subject(subject_id: str, glucose_5pt: List[float], insulin_5pt: L
     metrics = {
         "ID": subject_id,
         "model_version": fit["model_version"],
-        "G15_PCHIP": g15,
-        "I15_PCHIP": i15,
         "p1_GE": fit["p1_GE"],
         "p2": fit["p2"],
         "p2_fixed": fit["p2_fixed"],
@@ -310,8 +293,7 @@ def run_single_subject(subject_id: str, glucose_5pt: List[float], insulin_5pt: L
         "GI_pred": fit["GI_pred"],
         "E_pred": fit["E_pred"],
         "Ra_pred": fit["Ra_pred"],
-        "Is_interpolated_point": np.isclose(T_FIT, 15.0),
-        "Fit_weight": np.where(np.isclose(T_FIT, 15.0), W15, 1.0),
+        "Is_observed_point": True,
     })
 
     dense_table = pd.DataFrame({
@@ -370,13 +352,13 @@ def run_batch(df: pd.DataFrame) -> Tuple[pd.DataFrame, Dict[str, bytes]]:
     res_df = pd.DataFrame(results)
 
     main_cols = [
-        "ID", "model_version", "G15_PCHIP", "I15_PCHIP", "p1_GE", "p2", "p2_fixed", "p3", "SI",
+        "ID", "model_version", "p1_GE", "p2", "p2_fixed", "p3", "SI",
         "KGI", "Ka", "GI0", "GI_half_life_min", "Insulinogenic_index", "Matsuda_index",
         "oDI", "cost", "success", "nfev", "Gb", "Ib", "fit_message",
-        "G_obs_0", "G_obs_15", "G_obs_30", "G_obs_60", "G_obs_90", "G_obs_120",
-        "I_obs_0", "I_obs_15", "I_obs_30", "I_obs_60", "I_obs_90", "I_obs_120",
-        "G_pred_0", "G_pred_15", "G_pred_30", "G_pred_60", "G_pred_90", "G_pred_120",
-        "Ra_0", "Ra_15", "Ra_30", "Ra_60", "Ra_90", "Ra_120", "error_message"
+        "G_obs_0", "G_obs_30", "G_obs_60", "G_obs_90", "G_obs_120",
+        "I_obs_0", "I_obs_30", "I_obs_60", "I_obs_90", "I_obs_120",
+        "G_pred_0", "G_pred_30", "G_pred_60", "G_pred_90", "G_pred_120",
+        "Ra_0", "Ra_30", "Ra_60", "Ra_90", "Ra_120", "error_message"
     ]
     existing_main = [c for c in main_cols if c in res_df.columns]
     others = [c for c in res_df.columns if c not in existing_main]
